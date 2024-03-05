@@ -1,0 +1,64 @@
+# Definitions for FITS image WCS 
+['galactic']
+
+crpix = [5401,301]
+crval=[90,0]
+ctype=['GLON-CAR','GLAT-CAR']
+cdelt=[-0.0166666,0.0166666]
+nypix=601
+nxpix=10801
+
+[galactic_0-5arcmin]
+
+crpix=[10801,601]
+crval=[90,0]
+ctype=['GLON-CAR','GLAT-CAR']
+cdelt=[-0.008333333333333333,0.008333333333333333]
+nypix=1201
+nxpix=21601
+
+[Field63]
+crpix=[5401,301]
+crval=[90,0]
+ctype=['GLON-CAR','GLAT-CAR']
+cdelt=[-0.0166666,0.0166666]
+nypix=601
+nxpix=10801
+
+[M31] # fg4
+
+crpix=[361,361]
+crval=[121.174329,-21.573309]
+ctype=['GLON-CAR','GLAT-CAR']
+cdelt=[-0.0166666,0.0166666]
+nypix=721
+nxpix=721
+
+[perseus] # fg7
+crpix=[361,361]
+crval=['05:31:0.0','12:24:38.0']
+ctype=['RA---CAR','DEC--CAR']
+cdelt=[-0.0166666,0.0166666]
+nypix=721
+nxpix=721
+[lambdaori] # fg9 
+crpix=[361,361]
+crval=['05:30:18','12:46:00']
+ctype=['RA---CAR','DEC--CAR']
+cdelt=[-0.0166666,0.0166666]
+nypix=721
+nxpix=721
+[california] # fg11
+crpix=[361,361]
+crval=['04:03:18.0','+36:25:18']
+ctype=['RA---CAR','DEC--CAR']
+cdelt=[-0.0166666,0.0166666]
+nypix=721
+nxpix=721
+[ldn1111] # fg12
+crpix=[361,361]
+crval=['21:40:52.68','57:39:52.90']
+ctype=['RA---CAR','DEC--CAR']
+cdelt=[-0.0166666,0.0166666]
+nypix=721
+nxpix=721

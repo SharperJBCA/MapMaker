@@ -5,10 +5,10 @@
 # The IQU measurements are rotated to the sky frame via a rotation matrix.
 
 import numpy as np 
-from comancpipeline.MapMaking.mpi_functions import sum_map_all_inplace, mpi_sum, sum_map_to_root
-from comancpipeline.Tools import binFuncs
+from Tools.mpi_functions import sum_map_all_inplace, mpi_sum, sum_map_to_root
+from Tools import binFuncs
 
-from CBASSData import COORD_DIRECTION
+from Experiments.CBASSData import COORD_DIRECTION
 import healpy as hp 
 
 from mpi4py import MPI
@@ -153,7 +153,7 @@ class op_Ax_no_tod:
         self.rhs *= 0
 
         # Sum up the TOD into the offsets
-        binFuncs.bin_tod_to_rhs(self.rhs, tod, self.pointing, self.weights, self.special_weight, self.offset_length)
+        binFuncs.bin_tod_to_rhs_iqu(self.rhs, tod, self.pointing, self.weights, self.special_weight, self.offset_length)
 
         # Get the current sky map iteration
         binFuncs.bin_tod_to_map_iqu(self.sky_map, self.sky_weights, tod, self.pointing, self.weights, self.special_weight,direction=COORD_DIRECTION)
@@ -163,7 +163,7 @@ class op_Ax_no_tod:
         self.sky_map[self.sky_weights != 0] = self.sky_map[self.sky_weights != 0]/self.sky_weights[self.sky_weights != 0] 
         #print(rank,np.sum(self.sky_map), np.sum(self.sky_weights))
         # Subtraction the sky map from the tod offsets
-        binFuncs.subtract_map_from_rhs(self.rhs, self.sky_map, self.pointing, self.weights, self.special_weight, self.offset_length,direction=COORD_DIRECTION)
+        binFuncs.subtract_map_from_rhs_iqu(self.rhs, self.sky_map, self.pointing, self.weights, self.special_weight, self.offset_length,direction=COORD_DIRECTION)
 
         #print(rank,np.sum(self.rhs), np.sum(self.sky_weights))
         #comm.Barrier()
@@ -279,15 +279,18 @@ def sum_sky_maps_no_tod(_pointing, _weights, offset_length, pixel_edges, result,
     
     if rank == 0:
         npix = destriped.size//3 
-        I  = destriped[:npix]/destriped_h[:npix]
-        Q  = destriped[npix:2*npix]/destriped_h[npix:2*npix]
-        U  = destriped[2*npix:]/destriped_h[2*npix:]
-        Iw = destriped_h[:npix]
-        Qw = destriped_h[npix:2*npix]
-        Uw = destriped_h[2*npix:]
-        hits = destriped_qu[:npix]
-        QUw = destriped_qu[npix:2*npix]
-        QUcross = destriped_qu[2*npix:]
+        idx = np.arange(npix,dtype=int) 
+        idx = idx[destriped_h[:npix] != 0]
+        I,Q,U,Iw,Qw,Uw,hits,QUw,QUcross = [np.zeros(npix,dtype=np.float32) for i in range(9)]
+        I[idx]  = destriped[idx]/destriped_h[idx]
+        Q[idx]  = destriped[idx+npix]/destriped_h[idx+npix]
+        U[idx]  = destriped[idx+npix*2]/destriped_h[idx+npix*2]
+        Iw[idx] = destriped_h[idx+npix*0]
+        Qw[idx] = destriped_h[idx+npix*1]
+        Uw[idx] = destriped_h[idx+npix*2]
+        hits[idx] = destriped_qu[idx+npix*0]
+        QUw[idx] = destriped_qu[idx+npix*1]
+        QUcross[idx] = destriped_qu[idx+npix*2]
         hits_mask = (hits == 0)
         hits[hits_mask] = hp.UNSEEN 
         QUw[hits_mask] = hp.UNSEEN

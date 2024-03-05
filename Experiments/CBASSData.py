@@ -3,8 +3,7 @@ import h5py
 from astropy.io import fits
 from tqdm import tqdm
 import healpy as hp
-from comancpipeline.Tools.median_filter import medfilt
-from comancpipeline.Tools import Coordinates, binFuncs
+from Tools import Coordinates, binFuncs, pysla
 import os
 
 import sys
@@ -14,15 +13,14 @@ comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 import gc 
-from dataclasses import dataclass, field
-import mpi_functions
+#from dataclasses import dataclass, field
+from Tools import mpi_functions
 
 CBASS_LON = -118+17/60. 
 CBASS_LAT = 37+14/60.
 
 COORD_DIRECTION = 1.0
 
-from comancpipeline.Tools import pysla
 def pa(ra, dec, mjd, lon ,lat, degrees=True):
     """
     Calculate parallactic angle
@@ -45,14 +43,24 @@ def pa(ra, dec, mjd, lon ,lat, degrees=True):
     return p/c
     
 
-@dataclass
+#@dataclass
 class CBASSData(object):
 
-    filename : str = None # Filename of the data
-    stats_hdu : int = 2 # HDU containing the stats
-    nside : int = 512 
-    obsid : int = -1 
-    offset_length : int = 100 
+    def __init__(self, filename, obsid=-1, offset_length=100, nside=512):
+        self.filename = filename
+        self.obsid = obsid
+        self.offset_length = offset_length
+        self.nside = nside
+        self.extra_data = {} 
+        self.stats_hdu = 'NM20S3M1'
+
+        self.hdu = fits.open(self.filename,memmap=False)
+
+        self.load_data() 
+        self.load_weights() 
+        self.flag_data() 
+        self.calc_parallactic_angle() 
+        self.hdu.close() 
 
     @staticmethod
     def get_size(filename, offset_length=100):
@@ -244,7 +252,7 @@ class CBASSData(object):
 
         rhs = np.zeros(self.nsize//self.offset_length*3,dtype=np.float32)
 
-        binFuncs.bin_tod_to_rhs(rhs, tod, pixels, wei, pa, self.offset_length)
+        binFuncs.bin_tod_to_rhs_iqu(rhs, tod, pixels, wei, pa, self.offset_length)
 
         return rhs.reshape((3,-1)), good_offsets_slow
     
@@ -299,10 +307,24 @@ class CBASSData(object):
         pa = self.pa
         return pa
     
-@dataclass
+#@dataclass
 class CBASSDataGround(CBASSData):
 
-    elevations : list = field(default_factory=lambda: [37])
+    def __init__(self, filename, obsid=-1, offset_length=100, nside=512, elevations=[37]):
+        self.filename = filename
+        self.obsid = obsid
+        self.offset_length = offset_length
+        self.nside = nside
+        self.extra_data = {} 
+        self.elevations = elevations
+        self.hdu = fits.open(self.filename,memmap=False)
+
+        self.load_data() 
+        self.load_weights() 
+        self.flag_data() 
+        self.calc_parallactic_angle() 
+        self.hdu.close()
+
 
     @property 
     def pointing_ground_iqu(self):
@@ -317,16 +339,24 @@ class CBASSDataGround(CBASSData):
         ground_pixels[ntod:2*ntod] += 360*len(self.elevations)
         ground_pixels[2*ntod:] += 360*2*len(self.elevations)
         return ground_pixels
-@dataclass
+    
+#@dataclass
 class CBASSDataSim(CBASSData):
 
-    filename : str = None # Filename of the data
-    stats_hdu : int = 2 # HDU containing the stats
-    nside : int = 512 
-    obsid : int = -1 
-    offset_length : int = 100 
+    def __init__(self, filename, obsid=-1, offset_length=100, nside=512, cbass_map=np.zeros((3,12*512**2))):
+        self.filename = filename
+        self.obsid = obsid
+        self.offset_length = offset_length
+        self.nside = nside
+        self.extra_data = {} 
+        self.cbass_map = cbass_map
+        self.hdu = fits.open(self.filename,memmap=False)
 
-    cbass_map : np.ndarray = field(default_factory=lambda: np.zeros((3,12*512**2)))
+        self.load_data() 
+        self.load_weights() 
+        self.flag_data() 
+        self.calc_parallactic_angle() 
+        self.hdu.close()
 
     @property
     def tod_iqu(self):
@@ -348,7 +378,7 @@ class CBASSDataSim(CBASSData):
 
         return tod.flatten()
 
-def  read_comap_data(_filelist, offset_length=100, ifile_start=0, ifile_end=None): 
+def  read_cbass_data(_filelist, offset_length=100, ifile_start=0, ifile_end=None): 
     if isinstance(ifile_end, type(None)):
         ifile_end = len(_filelist)
 
@@ -394,7 +424,7 @@ def  read_comap_data(_filelist, offset_length=100, ifile_start=0, ifile_end=None
 
     return tod[good_offsets], weights[good_offsets], pointing[good_offsets], obsid[good_offsets], special_weights[good_offsets], all_cbass_data
 
-def  read_comap_data_iqu(_filelist, offset_length=100, ifile_start=0, ifile_end=None,nside=512): 
+def  read_cbass_data_iqu(_filelist, offset_length=100, ifile_start=0, ifile_end=None,nside=512): 
     if isinstance(ifile_end, type(None)):
         ifile_end = len(_filelist)
 
@@ -438,7 +468,12 @@ def  read_comap_data_iqu(_filelist, offset_length=100, ifile_start=0, ifile_end=
         nend = _nend 
 
 
-        s, w = cbass_data.get_map()
+        try:
+            s, w = cbass_data.get_map()
+        except IndexError:
+            print('BAD FILE FOR MAPMAKING: ', filename)
+            with open(f'bad_files{rank:02d}.txt','a') as f:
+                f.write(filename+'\n')
         sum_map += s
         wei_map += w
 
@@ -472,7 +507,7 @@ def  read_comap_data_iqu(_filelist, offset_length=100, ifile_start=0, ifile_end=
     naive_map[wei_map > 0] = sum_map[wei_map > 0]/wei_map[wei_map > 0]
 
 
-    binFuncs.subtract_map_from_rhs(rhs, naive_map, pointing, weights, special_weights, offset_length, direction=COORD_DIRECTION)
+    binFuncs.subtract_map_from_rhs_iqu(rhs, naive_map, pointing, weights, special_weights, offset_length, direction=COORD_DIRECTION)
 
     return sum_map,wei_map, rhs[good_offsets_bins], weights[good_offsets], pointing[good_offsets_slow], obsid[good_offsets_slow], special_weights[good_offsets_slow], all_cbass_data
 
